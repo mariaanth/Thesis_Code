@@ -1,0 +1,127 @@
+---
+title: "Low correlation"
+output: html_document
+date: "2025-06-04"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(Matrix)
+library(MASS)
+library(synthesizer)
+library(synthpop)
+library(dplyr)
+```
+
+# Function to generate data with low correlation between variables of the two groups
+
+```{r}
+set.seed(3862836)
+
+n <- 40000  
+generate_low_correlation_dataset <- function(n) {
+  cor_matrix <- matrix(c(
+    # age, zip, gender, edu, ethn, marital, job, income
+      1.0,  0.3,   0.1,  0.4,  0.0,    0.0,  0.0,   0.0,  # age
+      0.3,  1.0,   0.2,  0.3,  0.0,    0.0,  0.0,   0.0,  # zip
+      0.1,  0.2,   1.0,  0.3,  0.0,    0.0,  0.0,   0.0,  # gender
+      0.4,  0.3,   0.3,  1.0,  0.0,    0.0,  0.0,   0.0,  # edu
+      0.0,  0.0,   0.0,  0.0,  1.0,    0.5,  0.6,   0.5,  # ethn
+      0.0,  0.0,   0.0,  0.0,  0.5,    1.0,  0.4,   0.6,  # marital
+      0.0,  0.0,   0.0,  0.0,  0.6,    0.4,  1.0,   0.8,  # job
+      0.0,  0.0,   0.0,  0.0,  0.5,    0.6,  0.8,   1.0   # income
+  ), nrow = 8, byrow = TRUE)
+  
+  pd_matrix <- as.matrix(nearPD(cor_matrix, corr = TRUE)$mat)
+  
+  continuous_data <- MASS::mvrnorm(n = n, mu = rep(0, 8), Sigma = pd_matrix)
+  colnames(continuous_data) <- c("age_raw", "zip_raw", "gender_raw", "edu_raw", 
+                                "ethn_raw", "marital_raw", "job_raw", "income_raw")
+  
+  low_cor <- as.data.frame(continuous_data) %>%
+    mutate(
+      age = round(pnorm(age_raw) * 70 + 18),  #age 18-88
+      zip_code = round(pnorm(zip_raw) * 89999 + 10000),  #zip  10000-99999
+      gender = ifelse(gender_raw > 0, "Male", "Female"),  
+      education_level = cut(edu_raw, 
+                           breaks = c(-Inf, -0.8, -0.2, 0.4, 1, Inf),
+                           labels = c("High School", "Some College", "Bachelor's", "Master's", "PhD")),
+      
+      ethnicity = cut(ethn_raw, 
+                     breaks = c(-Inf, -0.8, -0.2, 0.4, 1, Inf),
+                     labels = c("White", "Black", "Hispanic", "Asian", "Other")),
+      marital_status = cut(marital_raw,
+                          breaks = c(-Inf, -0.5, 0.5, Inf),
+                          labels = c("Single", "Married", "Divorced")),
+      job = cut(job_raw,
+               breaks = c(-Inf, -0.8, -0.2, 0.4, 1, Inf),
+               labels = c("Unemployed", "Service", "Professional", "Management", "Executive")),
+      income = round(exp(income_raw + 10.5) / 100) * 100  
+    ) %>%
+    select(-ends_with("_raw"))  
+  
+    return(low_cor)
+}
+```
+
+
+# Low correlation data
+
+```{r}
+low_cor <- generate_low_correlation_dataset(n_samples)
+```
+
+# Generate synthetic data
+
+```{r}
+set.seed(3862836)
+train_ind <- sample(1:nrow(low_cor), size = 0.8 * nrow(low_cor))  
+train <- low_cor[train_ind, ]
+control <- low_cor[-train_ind, ]
+```
+
+
+```{r}
+slow_cor <- synthesize(train)
+slow_cor09 <- synthesize(train, rankcor = 0.9)
+synlow_cor <- syn(train,method = "cart")$syn
+```
+
+# Save data
+
+```{r}
+write.csv(train,"C:/Users/maria/OneDrive/Υπολογιστής/Thesis/Computational_Study/low_cor/train.csv",row.names = FALSE)
+write.csv(control,"C:/Users/maria/OneDrive/Υπολογιστής/Thesis/Computational_Study/low_cor/control.csv",row.names = FALSE)
+
+write.csv(slow_cor,"C:/Users/maria/OneDrive/Υπολογιστής/Thesis/Computational_Study/low_cor/slow_cor.csv",row.names = FALSE)
+write.csv(slow_cor09,"C:/Users/maria/OneDrive/Υπολογιστής/Thesis/Computational_Study/low_cor/slow_cor09.csv",row.names = FALSE)
+write.csv(synlow_cor,"C:/Users/maria/OneDrive/Υπολογιστής/Thesis/Computational_Study/low_cor/synlow_cor.csv",row.names = FALSE)
+```
+
+# Generate synthetic data with synthesizer with different rank correlations
+
+```{r}
+
+synthesize_and_save <- function(train_data, output_dir) {
+  for (r in round(seq(1.00, 0.60, by = -0.01), 2)) {
+    r_str <- sprintf("%03d", as.integer(r * 100))
+    
+    synthesized_data <- synthesize(train_data, rankcor = r)
+    
+    file_name <- paste0("slow_cor", r_str, ".csv")
+    full_path <- file.path(output_dir, file_name)
+    
+    write.csv(synthesized_data, full_path, row.names = FALSE)
+  }
+}
+```
+
+```{r}
+output_path <- "C:/Users/maria/OneDrive/Υπολογιστής/Thesis/Computational_Study/low_cor"
+synthesize_and_save(train_data = train, output_dir = output_path)
+```
+
+

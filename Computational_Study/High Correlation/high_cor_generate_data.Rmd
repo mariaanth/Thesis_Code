@@ -1,0 +1,138 @@
+---
+title: "High correlation"
+output: html_document
+date: "2025-06-04"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(MASS)
+library(synthesizer)
+library(synthpop)
+library(dplyr)
+```
+
+```{r}
+set.seed(3862836)
+n_samples <- 40000
+
+generate_high_correlation_dataset <- function(n) {
+  
+  #correlation matrix 
+  full_cor_matrix <- matrix(c(
+  # age, zip, gender, edu, ethn, marital, job, income
+    1.0,  0.3,   0.1,  0.4,  0.7,    0.8,  0.6,   0.9,  # age
+    0.3,  1.0,   0.2,  0.3,  0.9,    0.8,  0.9,   0.7,  # zip
+    0.1,  0.2,   1.0,  0.3,  0.6,    0.7,  0.8,   0.8,  # gender
+    0.4,  0.3,   0.3,  1.0,  0.9,    0.9,  0.8,   0.8,  # edu
+    0.7,  0.9,   0.6,  0.9,  1.0,    0.7,  0.2,   0.5,  # ethn
+    0.8,  0.8,   0.7,  0.9,  0.7,    1.0,  0.4,   0.6,  # marital
+    0.6,  0.9,   0.8,  0.8,  0.2,    0.4,  1.0,   0.8,  # job
+    0.9,  0.7,   0.8,  0.8,  0.5,    0.6,  0.8,   1.0   # income
+), nrow = 8, ncol = 8)
+  full_cor_matrix2 <- as.matrix(nearPD(full_cor_matrix, corr = TRUE)$mat)
+  #all variables from single multivariate normal distribution
+  all_vars_raw <- mvrnorm(n, mu = rep(0, 8), Sigma = full_cor_matrix2)
+  
+  age_raw <- all_vars_raw[, 1]
+  zip_raw <- all_vars_raw[, 2]
+  gender_raw <- all_vars_raw[, 3]
+  edu_raw <- all_vars_raw[, 4]
+  ethn_raw <- all_vars_raw[, 5]
+  marital_raw <- all_vars_raw[, 6]
+  job_raw <- all_vars_raw[, 7]
+  income_raw <- all_vars_raw[, 8]
+  
+  #transform dataset for specific values for each variable
+  dataset <- data.frame(
+    age_raw = age_raw,
+    zip_raw = zip_raw,
+    gender_raw = gender_raw,
+    edu_raw = edu_raw,
+    ethn_raw = ethn_raw,
+    marital_raw = marital_raw,
+    job_raw = job_raw,
+    income_raw = income_raw
+  ) %>%
+  mutate(
+    age = round(pnorm(age_raw) * 70 + 18),  #age 18-88
+    zip_code = round(pnorm(zip_raw) * 89999 + 10000),  #zip 10000-99999
+    gender = ifelse(gender_raw > 0, "Male", "Female"), 
+    education_level = cut(edu_raw, 
+                         breaks = c(-Inf, -0.8, -0.2, 0.4, 1, Inf),
+                         labels = c("High School", "Some College", "Bachelor's", "Master's", "PhD")),
+    ethnicity = cut(ethn_raw, 
+                   breaks = c(-Inf, -0.8, -0.2, 0.4, 1, Inf),
+                   labels = c("White", "Black", "Hispanic", "Asian", "Other")),
+    marital_status = cut(marital_raw,
+                        breaks = c(-Inf, -0.5, 0.5, Inf),
+                        labels = c("Single", "Married", "Divorced")),
+    job = cut(job_raw,
+             breaks = c(-Inf, -0.8, -0.2, 0.4, 1, Inf),
+             labels = c("Unemployed", "Service", "Professional", "Management", "Executive")),
+    income = round(exp(income_raw + 10.5) / 100) * 100  
+  ) %>%
+  select(-ends_with("_raw"))
+  
+  return(dataset)
+}
+```
+
+# High correlation data
+
+```{r}
+high_cor <- generate_high_correlation_dataset(n_samples)
+```
+
+# Generate synthetic data
+
+```{r}
+set.seed(3862836)
+train_ind <- sample(1:nrow(high_cor), size = 0.8 * nrow(high_cor))  
+train <- high_cor[train_ind, ]
+control <- high_cor[-train_ind, ]
+```
+
+
+```{r}
+shigh_cor <- synthesize(train)
+shigh_cor09 <- synthesize(train, rankcor = 0.9)
+synhigh_cor <- syn(train,method = "cart")$syn
+```
+
+# Save data
+
+```{r}
+write.csv(train,"C:/Users/maria/OneDrive/Υπολογιστής/Thesis/Computational_Study/high_cor/high_cor1/train.csv",row.names = FALSE)
+write.csv(control,"C:/Users/maria/OneDrive/Υπολογιστής/Thesis/Computational_Study/high_cor/high_cor1/control.csv",row.names = FALSE)
+
+write.csv(shigh_cor,"C:/Users/maria/OneDrive/Υπολογιστής/Thesis/Computational_Study//high_cor/high_cor1/shigh_cor.csv",row.names = FALSE)
+write.csv(shigh_cor09,"C:/Users/maria/OneDrive/Υπολογιστής/Thesis/Computational_Study/high_cor/high_cor1/shigh_cor09.csv",row.names = FALSE)
+write.csv(synhigh_cor,"C:/Users/maria/OneDrive/Υπολογιστής/Thesis/Computational_Study/high_cor/high_cor1/synhigh_cor.csv",row.names = FALSE)
+```
+
+# Generate synthetic data with synthesizer with different rank correlations
+
+```{r}
+synthesize_and_save <- function(train_data, output_dir) {
+  for (r in seq(1.00, 0.70, by = -0.01)) {
+    r_str <- sprintf("%03d", as.integer(r * 100))
+    
+    synthesized_data <- synthesize(train_data, rankcor = r)
+    
+    file_name <- paste0("shigh_cor", r_str, ".csv")
+    full_path <- file.path(output_dir, file_name)
+    
+    write.csv(synthesized_data, full_path, row.names = FALSE)
+  }
+}
+```
+
+```{r}
+output_path <- "C:/Users/maria/OneDrive/Υπολογιστής/Thesis/Computational_Study/high_cor/high_cor1"
+synthesize_and_save(train_data = train, output_dir = output_path)
+```
+

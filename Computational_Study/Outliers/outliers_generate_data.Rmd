@@ -1,0 +1,172 @@
+---
+title: "Outliers 2"
+output: html_document
+date: "2025-06-04"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(synthesizer)
+library(synthpop)
+library(dplyr)
+```
+
+# Funtion to generate random data with outliers
+
+```{r}
+set.seed(3862836)
+
+n_samples <- 40000
+
+generate_outlier_dataset <- function(n) {
+  
+  #raw values 
+  age_raw <- rnorm(n)
+  zip_raw <- rnorm(n)
+  gender_raw <- rnorm(n)
+  edu_raw <- rnorm(n)
+  ethn_raw <- rnorm(n)
+  marital_raw <- rnorm(n)
+  job_raw <- rnorm(n)
+  income_raw <- rnorm(n)
+  
+  #include outliers
+  
+  ##age
+  age_outlier_indices <- sample(1:n, n * 0.05)
+  age_raw[age_outlier_indices] <- c(
+    rep(-4, length(age_outlier_indices) * 0.4),    
+    rep(4, length(age_outlier_indices) * 0.4),     
+    runif(length(age_outlier_indices) * 0.2, -6, -4) 
+  )
+  
+  #zip
+  zip_outlier_indices <- sample(1:n, n * 0.03)
+  zip_raw[zip_outlier_indices] <- c(
+    rep(-3, length(zip_outlier_indices) * 0.5),   
+    rep(3, length(zip_outlier_indices) * 0.5)     
+  )
+  
+  #education
+  edu_outlier_indices <- sample(1:n, n * 0.08)
+  edu_raw[edu_outlier_indices] <- c(
+    rep(-3, length(edu_outlier_indices) * 0.6),    
+    rep(3, length(edu_outlier_indices) * 0.4)      
+  )
+  
+  #ethnicity
+  ethn_outlier_indices <- sample(1:n, n * 0.06)
+  ethn_raw[ethn_outlier_indices] <- c(
+    rep(-2.5, length(ethn_outlier_indices) * 0.7), 
+    rep(2.5, length(ethn_outlier_indices) * 0.3)  
+  )
+  
+  #job 
+  job_outlier_indices <- sample(1:n, n * 0.1)
+  job_raw[job_outlier_indices] <- c(
+    rep(-3, length(job_outlier_indices) * 0.6),    
+    rep(3, length(job_outlier_indices) * 0.4)      
+  )
+  
+  #income 
+  income_outlier_indices <- sample(1:n, n * 0.12)
+  income_raw[income_outlier_indices] <- c(
+    runif(length(income_outlier_indices) * 0.3, -4, -3),  
+    runif(length(income_outlier_indices) * 0.4, 2, 4),    
+    runif(length(income_outlier_indices) * 0.3, 4, 6)     
+  )
+  
+  #transform dataset for specific values for each variable
+  
+  dataset <- data.frame(
+    age_raw = age_raw,
+    zip_raw = zip_raw,
+    gender_raw = gender_raw,
+    edu_raw = edu_raw,
+    ethn_raw = ethn_raw,
+    marital_raw = marital_raw,
+    job_raw = job_raw,
+    income_raw = income_raw
+  ) %>%
+  mutate(
+    age = round(pnorm(age_raw) * 70 + 18),  #age 18-88
+    zip_code = round(pnorm(zip_raw) * 89999 + 10000),  #zip 10000-99999
+    gender = ifelse(gender_raw > 0, "Male", "Female"), 
+    education_level = cut(edu_raw, 
+                         breaks = c(-Inf, -0.8, -0.2, 0.4, 1, Inf),
+                         labels = c("High School", "Some College", "Bachelor's", "Master's", "PhD")),
+    ethnicity = cut(ethn_raw, 
+                   breaks = c(-Inf, -0.8, -0.2, 0.4, 1, Inf),
+                   labels = c("White", "Black", "Hispanic", "Asian", "Other")),
+    marital_status = cut(marital_raw,
+                        breaks = c(-Inf, -0.5, 0.5, Inf),
+                        labels = c("Single", "Married", "Divorced")),
+    job = cut(job_raw,
+             breaks = c(-Inf, -0.8, -0.2, 0.4, 1, Inf),
+             labels = c("Unemployed", "Service", "Professional", "Management", "Executive")),
+    income = round(exp(income_raw + 10.5) / 100) * 100  
+  ) %>%
+  select(-ends_with("_raw"))
+  
+  return(dataset)
+}
+```
+
+# Outliers data
+
+```{r}
+outliers <- generate_outlier_dataset(n_samples)
+```
+
+# Generate synthetic data
+
+```{r}
+set.seed(3862836)
+train_ind <- sample(1:nrow(outliers), size = 0.8 * nrow(outliers))  
+train <- outliers[train_ind, ]
+control <- outliers[-train_ind, ]
+```
+
+
+```{r}
+soutliers <- synthesize(train)
+soutliers09 <- synthesize(train, rankcor = 0.9)
+synoutliers <- syn(train,method = "cart")$syn
+```
+# Save data
+
+```{r}
+write.csv(train,"C:/Users/maria/OneDrive/Υπολογιστής/Thesis/Computational_Study/outliers/train.csv",row.names = FALSE)
+write.csv(control,"C:/Users/maria/OneDrive/Υπολογιστής/Thesis/Computational_Study/outliers/control.csv",row.names = FALSE)
+
+write.csv(soutliers,"C:/Users/maria/OneDrive/Υπολογιστής/Thesis/Computational_Study/outliers/soutliers.csv",row.names = FALSE)
+write.csv(soutliers09,"C:/Users/maria/OneDrive/Υπολογιστής/Thesis/Computational_Study/outliers/soutliers09.csv",row.names = FALSE)
+write.csv(synoutliers,"C:/Users/maria/OneDrive/Υπολογιστής/Thesis/Computational_Study/outliers/synoutliers.csv",row.names = FALSE)
+```
+
+# Generate synthetic data with synthesizer with different rank correlations
+
+```{r}
+synthesize_and_save <- function(train_data, output_dir) {
+  for (r in round(seq(1.00, 0.60, by = -0.01), 2)) {
+    r_str <- sprintf("%03d", as.integer(r * 100))
+    
+    synthesized_data <- synthesize(train_data, rankcor = r)
+    
+    file_name <- paste0("soutliers", r_str, ".csv")
+    full_path <- file.path(output_dir, file_name)
+    
+    write.csv(synthesized_data, full_path, row.names = FALSE)
+  }
+}
+
+```
+
+```{r}
+output_path <- "C:/Users/maria/OneDrive/Υπολογιστής/Thesis/Computational_Study/outliers"
+synthesize_and_save(train_data = train, output_dir = output_path)
+```
+
